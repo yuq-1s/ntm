@@ -3,7 +3,7 @@
 import tensorflow as tf
 
 class NTMCell(tf.nn.rnn_cell.RNNCell):
-    def __init__(self, input_shape, N, M, use_lstm=True, vocabulary_size):
+    def __init__(self, input_size, N, M, use_lstm=True):
         self.memory = tf.get_variable("memory", shape=[N, M], dtype=tf.float32)
         self.N = N
         self.M = M
@@ -14,8 +14,8 @@ class NTMCell(tf.nn.rnn_cell.RNNCell):
                                                          self.head_output_size)
         self.erase_controller = self._new_w_controller(use_lstm, M)
         self.addition_controller = self._new_w_controller(use_lstm, M)
-        self.encode = tf.get_variable('encode', shape=[input_shape, 2*M])
-        self.decode = tf.get_variable('decode', shape=[2*M, input_shape])
+        self.encode = tf.get_variable('encode', shape=[input_size, 2*M])
+        self.decode = tf.get_variable('decode', shape=[2*M, input_size])
 
     @property
     def state_size(self):
