@@ -7,7 +7,7 @@ BATCH_SIZE = 32
 
 class NTMCell(tf.nn.rnn_cell.RNNCell):
     def __init__(self, input_dim, N, M, use_lstm=True):
-        self.memory = tf.get_variable("memory", shape=[BATCH_SIZE, N, M], dtype=tf.float32)
+        self.memory = tf.get_variable("memory", shape=[BATCH_SIZE, M, N], dtype=tf.float32)
         self.N = N
         self.M = M
         self.head_output_size = N+M+3
@@ -17,28 +17,29 @@ class NTMCell(tf.nn.rnn_cell.RNNCell):
                                                          self.head_output_size)
         self.erase_controller = self._new_w_controller(use_lstm, M)
         self.addition_controller = self._new_w_controller(use_lstm, M)
-        self.input_dim = input_dim
+        self.input_dim = int(input_dim)
         # self.encode = tf.get_variable('encode', shape=[input_dim, 2*M])
         # self.decode = tf.get_variable('decode', shape=[2*M, input_dim])
         if use_lstm:
             self.initial_read_w_controller_state = \
-                self._get_initial_state(self.head_output_size)
+                self._get_lstm_initial_state(self.head_output_size)
             self.initial_write_w_controller_state = \
-                self._get_initial_state(self.head_output_size)
+                self._get_lstm_initial_state(self.head_output_size)
             self.initial_erase_controller_state = \
-                self._get_initial_state(M)
+                self._get_lstm_initial_state(M)
             self.initial_addition_controller_state = \
-                self._get_initial_state(M)
+                self._get_lstm_initial_state(M)
         else:
             # dummy states
-            self.initial_read_w_controller_state = tf.constant()
-            self.initial_write_w_controller_state = tf.constant()
-            self.initial_erase_controller_state = tf.constant()
-            self.initial_addition_controller_state = tf.constant()
+            self.initial_read_w_controller_state = tf.constant([])
+            self.initial_write_w_controller_state = tf.constant([])
+            self.initial_erase_controller_state = tf.constant([])
+            self.initial_addition_controller_state = tf.constant([])
 
-    def _get_initial_state(self, hidden_size):
-        return (tf.zeros([BATCH_SIZE, hidden_size]),
-                tf.zeros([BATCH_SIZE, hidden_size]))
+    def _get_lstm_initial_state(self, hidden_size):
+        return tf.contrib.rnn.LSTMStateTuple(
+            tf.zeros([BATCH_SIZE, hidden_size]),
+            tf.zeros([BATCH_SIZE, hidden_size]))
 
     @property
     def state_size(self):
@@ -47,15 +48,15 @@ class NTMCell(tf.nn.rnn_cell.RNNCell):
 
     @property
     def output_size(self):
-        # FIXME: What is this for?
-        return 42
+        return self.input_dim
 
     def _get_w(self, last_w, raw_output):
         k, beta, g, s, gamma = tf.split(raw_output,
                                         [self.M, 1, 1, self.N, 1],
                                         axis=1)
-        memory_row_norm = tf.reduce_sum(tf.abs(self.memory), axis=2)
-        logits = beta * tf.matmul(k, self.memory, transpose_b=True) / memory_row_norm
+        memory_row_norm = tf.reduce_sum(tf.abs(self.memory), axis=1)
+        foo = tf.squeeze(tf.matmul(tf.expand_dims(k, 1), self.memory))
+        logits = beta * foo / memory_row_norm
         w_c = tf.nn.softmax(logits)
         w_g = g * w_c + (1-g) * last_w
         w_g = tf.cast(w_g, tf.complex64)
@@ -69,18 +70,18 @@ class NTMCell(tf.nn.rnn_cell.RNNCell):
             return tf.contrib.rnn.BasicLSTMCell(output_size)
         else:
             def linear_controller(inputs, dummy_state):
-                assert dummy_state is None
                 output = tf.layers.dense(inputs, output_size)
                 return output, dummy_state
             return linear_controller
 
-    def read_head(self, inputs, last_w, read_w_controller_state):
-        # inputs: of shape [-1, 2, M] is embedding of input and last_r
+    def read_head(self, inputs, last_w, controller_state):
+        # inputs: of shape [-1, M+self.input_dim] is the concatenation of inputs
+        # and last_r
         with tf.variable_scope("read_head"):
             raw_output, controller_state = self.read_w_controller(
                 inputs, controller_state)
             w = self._get_w(last_w, raw_output)
-            r = w * self.memory
+            r = tf.squeeze(tf.matmul(self.memory, tf.expand_dims(w, 2)))
             return r, w, controller_state
 
     def write_head(self, inputs, last_w, write_w_controller_state,
@@ -99,8 +100,8 @@ class NTMCell(tf.nn.rnn_cell.RNNCell):
             a, addition_controller_state = self.addition_controller(
                 inputs, addition_controller_state)
             w = self._get_w(last_w, raw_output)
-            memory_tild = self.memory - self.memory * outer_product(w, e)
-            write_op = self.memory.assign(memory_tild + outer_product(w, a))
+            memory_tild = self.memory - self.memory * outer_product(e, w)
+            write_op = self.memory.assign(memory_tild + outer_product(a, w))
             return (write_op, w, write_w_controller_state,
                     erase_controller_state, addition_controller_state)
 
@@ -114,7 +115,6 @@ class NTMCell(tf.nn.rnn_cell.RNNCell):
              last_erase_state,
              last_addition_state) = state
             # inputs: [batch_size: 37, bit_width: 8]
-            # input_embedding = tf.matmul(inputs, self.encode)
             inputs = tf.concat([inputs, last_r], axis=1)
             (write_op,
              write_w,
@@ -128,7 +128,7 @@ class NTMCell(tf.nn.rnn_cell.RNNCell):
                 r, read_w, read_w_controller_state = self.read_head(
                     inputs, last_read_w, read_w_controller_state)
 
-            return tf.split(inputs, [input_dim, -1], axis=1)[0],
-        (r, read_w, write_w, read_w_controller_state,
-         write_w_controller_state, erase_controller_state,
-         addition_controller_state)
+            return tf.split(inputs, [self.input_dim, -1], axis=1)[0], \
+                (r, read_w, write_w, read_w_controller_state,
+                 write_w_controller_state, erase_controller_state,
+                 addition_controller_state)
