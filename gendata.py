@@ -6,6 +6,7 @@ import sys
 
 FILENAME = 'data/sequences.tfrecord'
 
+# TODO: add begin marker and end marker
 def get_example(bit_width, seq_length, batch_size):
     def _bytes_feature(value):
         return tf.train.Feature(bytes_list=tf.train.BytesList(value=[value]))
