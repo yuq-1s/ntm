@@ -10,7 +10,18 @@ BATCH_SIZE = 32
 # TODO: Try to let the NTM determine when to emit an output and when to halt
 # TODO: Try to put the input on its memory like the original turing machine
 class NTM(abc.ABC):
-    def __init__(self, inputs, N, M, use_lstm, params={}):
+    @abc.abstractmethod
+    def loss(self):
+        pass
+
+    @abc.abstractmethod
+    def metrics(self):
+        pass
+
+    def model_fn(self, inputs, mode, params):
+        N = params['N']
+        M = params['M']
+        use_lstm = params['use_lstm']
         # inputs: [batch_size, time_step, input_dim]
         input_size = inputs.shape[2]
         # FIXME: do reshape when importing data instead of here
@@ -31,19 +42,7 @@ class NTM(abc.ABC):
         self.inputs = inputs
         self.outputs, self.final_state = tf.nn.dynamic_rnn(
             cell, inputs=inputs, dtype=tf.float32, initial_state=state)
-        self.model = tf.estimator.Estimator(
-            model_fn=self.model_fn,
-            params=params)
 
-    @abc.abstractmethod
-    def loss(self):
-        pass
-
-    @abc.abstractmethod
-    def metrics(self):
-        pass
-
-    def model_fn(self, features, labels, mode, params):
         if mode == tf.estimator.ModeKeys.TRAIN:
             train_op = tf.train.AdamOptimizer(
                 learning_rate=params.get('learning_rate', 1e-3)) \

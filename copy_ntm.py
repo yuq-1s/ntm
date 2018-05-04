@@ -6,18 +6,21 @@ from ntm import NTM
 FLAGS = tf.app.flags.FLAGS
 # FIXME: put these to a config file
 BIT_WIDTH = 8
+BATCH_SIZE = 32
 
 tf.app.flags.DEFINE_integer('N', 10, "memory size")
 tf.app.flags.DEFINE_integer('M', 100, "memory width")
 tf.app.flags.DEFINE_boolean('use_lstm', True, "usr lstm or linear controller")
+tf.app.flags.DEFINE_integer('train_steps', 100, "steps to train")
 
 class CopyNTM(NTM):
-    def __init__(self, inputs, N, M, use_lstm, params={}):
+    def __call__(self, features, labels, mode, params):
+        inputs = features
         padding = tf.zeros_like(inputs)
         # FIXME: just concat this, there must bugs here
         new_inputs = tf.concat([inputs, padding], 1)
         self.labels = tf.concat([padding, inputs], 1)
-        super().__init__(new_inputs, N, M, use_lstm, params)
+        return super().model_fn(new_inputs, mode, params)
 
     @property
     def loss(self):
@@ -52,10 +55,15 @@ def load_op(filename):
         .get_next()
 
 def main(_):
-    ntm = CopyNTM(load_op('data/sequences.tfrecord'),
-                  FLAGS.N,
-                  FLAGS.M,
-                  FLAGS.use_lstm)
+    params={
+        'N': FLAGS.N,
+        'M': FLAGS.M,
+        'use_lstm': FLAGS.use_lstm}
+
+    model = tf.estimator.Estimator(
+        model_fn=CopyNTM(), params=params)
+    model.train(input_fn=lambda:load_op('data/sequences.tfrecord'),
+                steps=FLAGS.train_steps)
 
 if __name__ == '__main__':
     tf.app.run()
