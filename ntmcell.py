@@ -2,15 +2,13 @@
 
 import tensorflow as tf
 
-# TODO: move this to config file
-BATCH_SIZE = 32
-
 class NTMCell(tf.nn.rnn_cell.RNNCell):
-    def __init__(self, input_dim, N, M, use_lstm=True):
-        self.memory = tf.get_variable("memory", shape=[BATCH_SIZE, M, N], dtype=tf.float32)
+    def __init__(self, batch_size, input_dim, N, M, use_lstm=True):
+        self.memory = tf.get_variable("memory", shape=[batch_size, M, N], dtype=tf.float32)
         self.N = N
         self.M = M
         self.head_output_size = N+M+3
+        self.batch_size = batch_size
         self.read_w_controller = self._new_w_controller(use_lstm,
                                                         self.head_output_size)
         self.write_w_controller = self._new_w_controller(use_lstm,
@@ -38,8 +36,8 @@ class NTMCell(tf.nn.rnn_cell.RNNCell):
 
     def _get_lstm_initial_state(self, hidden_size):
         return tf.contrib.rnn.LSTMStateTuple(
-            tf.zeros([BATCH_SIZE, hidden_size]),
-            tf.zeros([BATCH_SIZE, hidden_size]))
+            tf.zeros([self.batch_size, hidden_size]),
+            tf.zeros([self.batch_size, hidden_size]))
 
     @property
     def state_size(self):
@@ -87,8 +85,8 @@ class NTMCell(tf.nn.rnn_cell.RNNCell):
     def write_head(self, inputs, last_w, write_w_controller_state,
                    erase_controller_state, addition_controller_state):
         def outer_product(a, b):
-            return tf.reshape(a, [BATCH_SIZE, -1, 1]) * \
-                tf.reshape(b, [BATCH_SIZE, 1, -1])
+            return tf.reshape(a, [self.batch_size, -1, 1]) * \
+                tf.reshape(b, [self.batch_size, 1, -1])
 
         with tf.variable_scope("write_head"):
             raw_output, write_w_controller_state = self.write_w_controller(
