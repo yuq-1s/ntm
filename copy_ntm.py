@@ -54,10 +54,12 @@ class CopyNTM(NTM):
             return self._metrics
 
 def generate_single_sequence():
+    ''' generate 2 continuous copy of same random bits, padded with -1 '''
     while True:
         seq_length = random.randint(FLAGS.min_seq_length, FLAGS.max_seq_length)
-        yield [random.randint(0, 1) for _ in range(FLAGS.bit_width*seq_length)] + \
-            [-1]*((FLAGS.max_seq_length-seq_length)*FLAGS.bit_width), seq_length
+        sequence = [random.randint(0, 1) for _ in range(FLAGS.bit_width*seq_length)]
+        padding = [-1]*(2*(FLAGS.max_seq_length-seq_length)*FLAGS.bit_width)
+        yield (sequence*2 + padding, seq_length*2)
 
 def get_dataset(size):
     # I swear I'll never use tfrecord again :(

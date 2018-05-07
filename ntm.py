@@ -7,6 +7,9 @@ from ntmcell import NTMCell
 # TODO: Try to let the NTM determine when to emit an output and when to halt
 # TODO: Try to put the input on its memory like the original turing machine
 class NTM(abc.ABC):
+    def __init__(self, graph):
+        self.graph = graph
+
     @abc.abstractmethod
     def loss(self):
         pass
@@ -15,15 +18,20 @@ class NTM(abc.ABC):
     def metrics(self):
         pass
 
-    def model_fn(self, inputs, mode, params):
+    def model_fn(self, features, labels, mode, params):
+        # FIXME: Cannot move this to task specific derived classes: I got 
+        # ValueError: Tensor("Shape:0", shape=(1,), dtype=int32) must be from the same graph as Tensor("rnn/stack:0", shape=(1,), dtype=int32).
+        inputs, length = features, labels
+        # padding = tf.zeros_like(inputs)
+        # inputs = tf.concat([inputs, padding], 1)
+        # self.labels = tf.concat([padding, inputs], 1)
+        # with self.graph.as_default():
         N = params['N']
         M = params['M']
         use_lstm = params['use_lstm']
         batch_size = params['batch_size']
         # inputs: [batch_size, time_step, input_dim]
         input_size = inputs.shape[2]
-        # FIXME: do reshape when importing data instead of here
-        inputs = tf.reshape(inputs, [batch_size, -1, input_size])
         cell = NTMCell(batch_size, input_size, N, M, use_lstm)
         initial_r = tf.get_variable('r', shape=[batch_size, M], dtype=tf.float32)
         initial_read_w = tf.nn.softmax(tf.get_variable(
@@ -31,15 +39,19 @@ class NTM(abc.ABC):
         initial_write_w = tf.nn.softmax(tf.get_variable(
             'write_w', shape=[batch_size, N], dtype=tf.float32))
         state = (initial_r,
-                 initial_read_w,
-                 initial_write_w,
-                 cell.initial_read_w_controller_state,
-                 cell.initial_write_w_controller_state,
-                 cell.initial_erase_controller_state,
-                 cell.initial_addition_controller_state)
+                initial_read_w,
+                initial_write_w,
+                cell.initial_read_w_controller_state,
+                cell.initial_write_w_controller_state,
+                cell.initial_erase_controller_state,
+                cell.initial_addition_controller_state)
         self.inputs = inputs
         self.outputs, self.final_state = tf.nn.dynamic_rnn(
-            cell, inputs=inputs, dtype=tf.float32, initial_state=state)
+            cell,
+            sequence_length=length,
+            inputs=inputs,
+            dtype=tf.float32,
+            initial_state=state)
         # FIXME: Cannot use virtual method in derived classes: get this error:
         # ValueError: loss with "absolute_difference/value:0" must be from the default graph. Possible causes of this error include: 
         # 1) loss was created outside the context of the default graph.
