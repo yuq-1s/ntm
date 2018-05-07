@@ -15,11 +15,7 @@ class NTM(abc.ABC):
     def metrics(self):
         pass
 
-    def model_fn(self, inputs, labels, lengths, mode, params):
-        # FIXME: Cannot move this to task specific derived classes: I got 
-        # ValueError: Tensor("Shape:0", shape=(1,), dtype=int32) must be from the same graph as Tensor("rnn/stack:0", shape=(1,), dtype=int32).
-        self.inputs = inputs
-        self.labels = labels
+    def model_fn(self, inputs, labels, lengths, params):
         N = params['N']
         M = params['M']
         use_lstm = params['use_lstm']
@@ -45,28 +41,8 @@ class NTM(abc.ABC):
             inputs=inputs,
             dtype=tf.float32,
             initial_state=state)
-        # FIXME: Cannot use virtual method in derived classes: get this error:
-        # ValueError: loss with "absolute_difference/value:0" must be from the default graph. Possible causes of this error include: 
-        # 1) loss was created outside the context of the default graph.
-        # 2) The object passed through to EstimatorSpec was not created in the most recent
-        # call to "model_fn".
-        self._loss = tf.losses.absolute_difference(self.outputs, self.labels)
-        self._metrics = {'mae': tf.metrics.mean_absolute_error(
-            labels=self.labels, predictions=self.outputs)}
 
         train_op = tf.train.AdamOptimizer(
             learning_rate=params.get('learning_rate', 1e-3)) \
             .minimize(self.loss, global_step=tf.train.get_or_create_global_step())
         return train_op
-
-        if mode == tf.estimator.ModeKeys.TRAIN:
-            return tf.estimator.EstimatorSpec(
-                mode=mode, loss=self.loss, train_op=train_op)
-        elif mode == tf.estimator.ModeKeys.EVAL:
-            return tf.estimator.EstimatorSpec(
-                mode=mode, loss=self.loss, eval_metric_ops=self.metrics)
-        elif mode == tf.estimator.ModeKeys.PREDICT:
-            return tf.estimator.EstimatorSpec(
-                mode=mode, predictions={'outputs': self.outputs})
-        else:
-            raise ValueError("Unknown mode %s" % mode)

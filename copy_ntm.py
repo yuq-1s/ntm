@@ -7,7 +7,6 @@ from ntm import NTM
 
 FLAGS = tf.app.flags.FLAGS
 
-# graph = tf.Graph()
 tf.app.flags.DEFINE_integer('N', 10, "memory size")
 tf.app.flags.DEFINE_integer('M', 100, "memory width")
 tf.app.flags.DEFINE_boolean('use_lstm', True, "usr lstm or linear controller")
@@ -19,19 +18,23 @@ tf.app.flags.DEFINE_integer('max_seq_length', 20, 'maximum length of sequence'
 tf.app.flags.DEFINE_integer('min_seq_length', 10, 'minimum length of sequence'
                             'to copy')
 tf.app.flags.DEFINE_integer('random_seed', 42, 'random seed')
+tf.app.flags.DEFINE_integer('num_batch', 10, 'number of batches for training')
 
 class CopyNTM(NTM):
-    def __call__(self, inputs, labels, lengths, mode, params):
-        return super().model_fn(inputs, labels, lengths, mode, params)
+    def __call__(self, inputs, labels, lengths, params):
+        self.inputs = inputs
+        self.labels = labels
+        self.lengths = lengths
+        return super().model_fn(inputs, labels, lengths, params)
 
     @property
     def loss(self):
         if hasattr(self, '_loss'):
             return self._loss
         else:
-            # with self.graph.as_default():
             self._loss = tf.losses.absolute_difference(
                 self.outputs, self.labels)
+            tf.summary.scalar('loss', self._loss)
             return self._loss
 
     @property
@@ -39,9 +42,10 @@ class CopyNTM(NTM):
         if hasattr(self, '_metrics'):
             return self._metrics
         else:
-            # with self.graph.as_default():
-            self._metrics = {'mae': tf.metrics.mean_absolute_error(
-                labels=self.labels, predictions=self.outputs)}
+            metrics = tf.metrics.mean_absolute_error(
+                labels=self.labels, predictions=self.outputs)
+            self._metrics = {'mae': metrics}
+            tf.summary.scalar('mae', metrics)
             return self._metrics
 
 def generate_single_sequence():
@@ -80,27 +84,16 @@ def main(_):
         'bit_width': FLAGS.bit_width}
 
     ntm = CopyNTM()
-    train_dataset = get_dataset(FLAGS.batch_size * 10)
+    train_dataset = get_dataset(FLAGS.batch_size * FLAGS.num_batch)
     eval_dataset = get_dataset(FLAGS.batch_size * 2)
-    train_op = ntm(*train_dataset, tf.estimator.ModeKeys.TRAIN, params)
+    train_op = ntm(*train_dataset, params)
+    summary_op = tf.summary.merge_all()
+    writer = tf.summary.FileWriter('logs')
     with tf.train.MonitoredTrainingSession(
             checkpoint_dir='model') as sess:
         for i in range(FLAGS.train_steps):
-            sess.run(train_op)
-    model = tf.estimator.Estimator(
-        model_fn=CopyNTM(),
-        config=tf.estimator.RunConfig(
-            model_dir='model',
-            tf_random_seed=FLAGS.random_seed,
-        ),
-        params=params)
-    train_spec = tf.estimator.TrainSpec(
-        input_fn=lambda: train_dataset,
-        max_steps=FLAGS.train_steps)
-    eval_spec = tf.estimator.EvalSpec(
-        input_fn=lambda: eval_dataset)
-    tf.estimator.train_and_evaluate(model, train_spec, eval_spec)
-
+            summary, _ = sess.run([summary_op, train_op])
+            writer.add_summary(summary)
 
 if __name__ == '__main__':
     tf.app.run()
