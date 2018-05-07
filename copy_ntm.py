@@ -21,17 +21,8 @@ tf.app.flags.DEFINE_integer('min_seq_length', 10, 'minimum length of sequence'
 tf.app.flags.DEFINE_integer('random_seed', 42, 'random seed')
 
 class CopyNTM(NTM):
-    def __init__(self, graph):
-        super().__init__(graph)
-
-    def __call__(self, features, labels, mode, params):
-        # with self.graph.as_default():
-        # inputs, length = features, labels
-        # padding = tf.zeros_like(inputs)
-        # new_inputs = tf.concat([inputs, padding], 1)
-        # self.labels = tf.concat([padding, inputs], 1)
-        # return super().model_fn(new_inputs, length, mode, params)
-        return super().model_fn(features, labels, mode, params)
+    def __call__(self, inputs, labels, lengths, mode, params):
+        return super().model_fn(inputs, labels, lengths, mode, params)
 
     @property
     def loss(self):
@@ -56,31 +47,28 @@ class CopyNTM(NTM):
 def generate_single_sequence():
     ''' generate 2 continuous copy of same random bits, padded with -1 '''
     while True:
+        NOT_A_WORD = -1
         seq_length = random.randint(FLAGS.min_seq_length, FLAGS.max_seq_length)
         sequence = [random.randint(0, 1) for _ in range(FLAGS.bit_width*seq_length)]
-        padding = [-1]*(2*(FLAGS.max_seq_length-seq_length)*FLAGS.bit_width)
-        yield (sequence*2 + padding, seq_length*2)
+        padding_length = (FLAGS.max_seq_length-seq_length) * FLAGS.bit_width
+        sequence += [NOT_A_WORD] * padding_length
+        empty_sequence = [NOT_A_WORD]*FLAGS.max_seq_length*FLAGS.bit_width
+        inputs = sequence + empty_sequence
+        labels = empty_sequence + sequence
+        yield inputs, labels, seq_length+FLAGS.max_seq_length
 
 def get_dataset(size):
     # I swear I'll never use tfrecord again :(
     # What rubbish design and awkward interface!
     # with graph.as_default():
     data_generator = generate_single_sequence()
-    d, l = next(data_generator)
-    data = tf.constant(d, dtype=tf.float32)
-    data = tf.reshape(data, [FLAGS.max_seq_length, FLAGS.bit_width])
-    length = tf.constant(l, dtype=tf.int64)
-    return tf.train.batch([data, length], FLAGS.batch_size)
-    # data = []
-    # length = []
-    # for _ in range(size):
-        # d, l = next(data_generator)
-        # data.append(d)
-        # length.append(l)
+    data, labels, lengths = next(data_generator)
     data = tf.constant(data, dtype=tf.float32)
-    data = tf.reshape(data, [size, FLAGS.max_seq_length, FLAGS.bit_width])
-    length = tf.constant(length, dtype=tf.int64)
-    return data, length
+    data = tf.reshape(data, [FLAGS.max_seq_length*2, FLAGS.bit_width])
+    labels = tf.constant(labels, dtype=tf.float32)
+    labels = tf.reshape(labels, [FLAGS.max_seq_length*2, FLAGS.bit_width])
+    lengths = tf.constant(lengths, dtype=tf.int64)
+    return tf.train.batch([data, labels, lengths], FLAGS.batch_size)
 
 def main(_):
     tf.logging.set_verbosity('DEBUG')
@@ -91,16 +79,21 @@ def main(_):
         'batch_size': FLAGS.batch_size,
         'bit_width': FLAGS.bit_width}
 
+    ntm = CopyNTM()
+    train_dataset = get_dataset(FLAGS.batch_size * 10)
+    eval_dataset = get_dataset(FLAGS.batch_size * 2)
+    train_op = ntm(*train_dataset, tf.estimator.ModeKeys.TRAIN, params)
+    with tf.train.MonitoredTrainingSession(
+            checkpoint_dir='model') as sess:
+        for i in range(FLAGS.train_steps):
+            sess.run(train_op)
     model = tf.estimator.Estimator(
-        model_fn=CopyNTM(1),
+        model_fn=CopyNTM(),
         config=tf.estimator.RunConfig(
             model_dir='model',
             tf_random_seed=FLAGS.random_seed,
         ),
         params=params)
-    # with graph.as_default():
-    train_dataset = get_dataset(FLAGS.batch_size * 10)
-    eval_dataset = get_dataset(FLAGS.batch_size * 2)
     train_spec = tf.estimator.TrainSpec(
         input_fn=lambda: train_dataset,
         max_steps=FLAGS.train_steps)

@@ -7,9 +7,6 @@ from ntmcell import NTMCell
 # TODO: Try to let the NTM determine when to emit an output and when to halt
 # TODO: Try to put the input on its memory like the original turing machine
 class NTM(abc.ABC):
-    def __init__(self, graph):
-        self.graph = graph
-
     @abc.abstractmethod
     def loss(self):
         pass
@@ -18,14 +15,11 @@ class NTM(abc.ABC):
     def metrics(self):
         pass
 
-    def model_fn(self, features, labels, mode, params):
+    def model_fn(self, inputs, labels, lengths, mode, params):
         # FIXME: Cannot move this to task specific derived classes: I got 
         # ValueError: Tensor("Shape:0", shape=(1,), dtype=int32) must be from the same graph as Tensor("rnn/stack:0", shape=(1,), dtype=int32).
-        inputs, length = features, labels
-        # padding = tf.zeros_like(inputs)
-        # inputs = tf.concat([inputs, padding], 1)
-        # self.labels = tf.concat([padding, inputs], 1)
-        # with self.graph.as_default():
+        self.inputs = inputs
+        self.labels = labels
         N = params['N']
         M = params['M']
         use_lstm = params['use_lstm']
@@ -45,10 +39,9 @@ class NTM(abc.ABC):
                 cell.initial_write_w_controller_state,
                 cell.initial_erase_controller_state,
                 cell.initial_addition_controller_state)
-        self.inputs = inputs
         self.outputs, self.final_state = tf.nn.dynamic_rnn(
             cell,
-            sequence_length=length,
+            sequence_length=lengths,
             inputs=inputs,
             dtype=tf.float32,
             initial_state=state)
@@ -61,10 +54,12 @@ class NTM(abc.ABC):
         self._metrics = {'mae': tf.metrics.mean_absolute_error(
             labels=self.labels, predictions=self.outputs)}
 
+        train_op = tf.train.AdamOptimizer(
+            learning_rate=params.get('learning_rate', 1e-3)) \
+            .minimize(self.loss, global_step=tf.train.get_or_create_global_step())
+        return train_op
+
         if mode == tf.estimator.ModeKeys.TRAIN:
-            train_op = tf.train.AdamOptimizer(
-                learning_rate=params.get('learning_rate', 1e-3)) \
-                .minimize(self.loss, global_step=tf.train.get_global_step())
             return tf.estimator.EstimatorSpec(
                 mode=mode, loss=self.loss, train_op=train_op)
         elif mode == tf.estimator.ModeKeys.EVAL:
