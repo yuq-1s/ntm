@@ -61,18 +61,23 @@ def generate_single_sequence():
         labels = empty_sequence + sequence
         yield inputs, labels, seq_length+FLAGS.max_seq_length
 
-def get_dataset(size):
+def get_dataset():
     # I swear I'll never use tfrecord again :(
     # What rubbish design and awkward interface!
-    # with graph.as_default():
+    # FIXME: this function is so ugly!!
     data_generator = generate_single_sequence()
-    data, labels, lengths = next(data_generator)
-    data = tf.constant(data, dtype=tf.float32)
-    data = tf.reshape(data, [FLAGS.max_seq_length*2, FLAGS.bit_width])
-    labels = tf.constant(labels, dtype=tf.float32)
-    labels = tf.reshape(labels, [FLAGS.max_seq_length*2, FLAGS.bit_width])
-    lengths = tf.constant(lengths, dtype=tf.int64)
-    return tf.train.batch([data, labels, lengths], FLAGS.batch_size)
+    ret = {'data': [], 'labels': [], 'lengths': []}
+    count = 1
+    for data, labels, lengths in data_generator:
+        data = np.reshape(data, [FLAGS.max_seq_length*2, FLAGS.bit_width])
+        labels = np.reshape(labels, [FLAGS.max_seq_length*2, FLAGS.bit_width])
+        ret['data'].append(data)
+        ret['labels'].append(labels)
+        ret['lengths'].append(lengths)
+        count += 1
+        if count > FLAGS.batch_size:
+            break
+    return ret['data'], ret['labels'], ret['lengths']
 
 def main(_):
     tf.logging.set_verbosity('DEBUG')
@@ -83,17 +88,30 @@ def main(_):
         'batch_size': FLAGS.batch_size,
         'bit_width': FLAGS.bit_width}
 
+    # TODO: batch numbers together
+    with tf.name_scope('train'):
+        data_op = tf.placeholder(shape=[None, FLAGS.max_seq_length*2, FLAGS.bit_width],
+                              dtype=tf.float32, name='data')
+        labels_op = tf.placeholder(shape=[None, FLAGS.max_seq_length*2, FLAGS.bit_width],
+                                dtype=tf.float32, name='labels')
+        lengths_op = tf.placeholder(shape=[None], dtype=tf.int64, name='lengths')
+        # data, labels, lengths = tf.train.batch([data, labels, lengths],
+                                               # FLAGS.batch_size)
     ntm = CopyNTM()
-    train_dataset = get_dataset(FLAGS.batch_size * FLAGS.num_batch)
-    eval_dataset = get_dataset(FLAGS.batch_size * 2)
-    train_op = ntm(*train_dataset, params)
+    # train_dataset = get_dataset(FLAGS.batch_size * FLAGS.num_batch, 'train')
+    # eval_dataset = get_dataset(FLAGS.batch_size * 2, 'eval')
+    train_op = ntm(data_op, labels_op, lengths_op, params)
     summary_op = tf.summary.merge_all()
-    writer = tf.summary.FileWriter('logs')
     with tf.train.MonitoredTrainingSession(
-            checkpoint_dir='model') as sess:
-        for i in range(FLAGS.train_steps):
-            summary, _ = sess.run([summary_op, train_op])
-            writer.add_summary(summary, i)
+        checkpoint_dir='model') as sess:
+        writer = tf.summary.FileWriter('logs', sess.graph)
+        global_step = tf.train.get_global_step()
+        for _ in range(FLAGS.train_steps):
+            data, labels, lengths = get_dataset()
+            feed_dict = {data_op: data, labels_op: labels, lengths_op: lengths}
+            summary, step, _ = sess.run([summary_op, global_step, train_op],
+                                        feed_dict=feed_dict)
+            writer.add_summary(summary, step)
 
 if __name__ == '__main__':
     tf.app.run()
