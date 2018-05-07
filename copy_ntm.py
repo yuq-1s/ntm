@@ -93,7 +93,7 @@ def main(_):
             checkpoint_dir='model') as sess:
         for i in range(FLAGS.train_steps):
             summary, _ = sess.run([summary_op, train_op])
-            writer.add_summary(summary)
+            writer.add_summary(summary, i)
 
 if __name__ == '__main__':
     tf.app.run()
