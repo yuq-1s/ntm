@@ -22,27 +22,31 @@ class NTM(abc.ABC):
         batch_size = params['batch_size']
         # inputs: [batch_size, time_step, input_dim]
         input_size = inputs.shape[2]
-        cell = NTMCell(batch_size, input_size, N, M, use_lstm)
-        initial_r = tf.get_variable('r', shape=[batch_size, M], dtype=tf.float32)
-        initial_read_w = tf.nn.softmax(tf.get_variable(
-            'read_w', shape=[batch_size, N], dtype=tf.float32))
-        initial_write_w = tf.nn.softmax(tf.get_variable(
-            'write_w', shape=[batch_size, N], dtype=tf.float32))
-        state = (initial_r,
-                initial_read_w,
-                initial_write_w,
-                cell.initial_read_w_controller_state,
-                cell.initial_write_w_controller_state,
-                cell.initial_erase_controller_state,
-                cell.initial_addition_controller_state)
-        self.outputs, self.final_state = tf.nn.dynamic_rnn(
-            cell,
-            sequence_length=lengths,
-            inputs=inputs,
-            dtype=tf.float32,
-            initial_state=state)
+        with tf.variable_scope('ntm'):
+            with tf.variable_scope('ntm_cell'):
+                cell = NTMCell(batch_size, input_size, N, M, use_lstm)
+                with tf.variable_scope('states'):
+                    initial_r = tf.get_variable(
+                        'r', shape=[batch_size, M], dtype=tf.float32)
+                    initial_read_w = tf.nn.softmax(tf.get_variable(
+                        'read_w', shape=[batch_size, N], dtype=tf.float32))
+                    initial_write_w = tf.nn.softmax(tf.get_variable(
+                        'write_w', shape=[batch_size, N], dtype=tf.float32))
+                    state = (initial_r,
+                            initial_read_w,
+                            initial_write_w,
+                            cell.initial_read_w_controller_state,
+                            cell.initial_write_w_controller_state,
+                            cell.initial_erase_controller_state,
+                            cell.initial_addition_controller_state)
+            self.outputs, self.final_state = tf.nn.dynamic_rnn(
+                cell,
+                sequence_length=lengths,
+                inputs=inputs,
+                dtype=tf.float32,
+                initial_state=state)
 
-        train_op = tf.train.AdamOptimizer(
-            learning_rate=params.get('learning_rate', 1e-3)) \
-            .minimize(self.loss, global_step=tf.train.get_or_create_global_step())
+            train_op = tf.train.AdamOptimizer(
+                learning_rate=params['learning_rate']).minimize(
+                    self.loss, global_step=tf.train.get_or_create_global_step())
         return train_op

@@ -4,7 +4,9 @@ import tensorflow as tf
 
 class NTMCell(tf.nn.rnn_cell.RNNCell):
     def __init__(self, batch_size, input_dim, N, M, use_lstm=True):
-        self.memory = tf.get_variable("memory", shape=[batch_size, M, N], dtype=tf.float32)
+        self.memory = tf.get_variable(
+            "memory", shape=[batch_size, M, N], dtype=tf.float32,
+            initializer=tf.contrib.layers.xavier_initializer())
         self.N = N
         self.M = M
         self.head_output_size = N+M+3
@@ -19,14 +21,26 @@ class NTMCell(tf.nn.rnn_cell.RNNCell):
         # self.encode = tf.get_variable('encode', shape=[input_dim, 2*M])
         # self.decode = tf.get_variable('decode', shape=[2*M, input_dim])
         if use_lstm:
+            # self.initial_read_w_controller_state = \
+                # self.read_w_controller.zero_state(self.head_output_size,
+                                                  # tf.float32)
+            # self.initial_write_w_controller_state = \
+                # self.write_w_controller.zero_state(self.head_output_size,
+                                                  # tf.float32)
+            # self.initial_erase_controller_state = \
+                # self.erase_controller.zero_state(M,
+                                                  # tf.float32)
+            # self.initial_addition_controller_state = \
+                # self.addition_controller.zero_state(M,
+                                                  # tf.float32)
             self.initial_read_w_controller_state = \
-                self._get_lstm_initial_state(self.head_output_size)
+                self._get_lstm_initial_state(self.head_output_size, 'read_w')
             self.initial_write_w_controller_state = \
-                self._get_lstm_initial_state(self.head_output_size)
+                self._get_lstm_initial_state(self.head_output_size, 'write_w')
             self.initial_erase_controller_state = \
-                self._get_lstm_initial_state(M)
+                self._get_lstm_initial_state(M, 'erase')
             self.initial_addition_controller_state = \
-                self._get_lstm_initial_state(M)
+                self._get_lstm_initial_state(M, 'addition')
         else:
             # dummy states
             self.initial_read_w_controller_state = tf.constant([])
@@ -34,10 +48,14 @@ class NTMCell(tf.nn.rnn_cell.RNNCell):
             self.initial_erase_controller_state = tf.constant([])
             self.initial_addition_controller_state = tf.constant([])
 
-    def _get_lstm_initial_state(self, hidden_size):
-        return tf.contrib.rnn.LSTMStateTuple(
-            tf.zeros([self.batch_size, hidden_size]),
-            tf.zeros([self.batch_size, hidden_size]))
+    def _get_lstm_initial_state(self, hidden_size, scope):
+        with tf.variable_scope(scope):
+            return tf.contrib.rnn.LSTMStateTuple(
+                tf.get_variable(
+                    name=scope+'_h', shape=[self.batch_size, hidden_size]),
+                tf.get_variable(
+                    name=scope+'_c', shape=[self.batch_size, hidden_size])
+            )
 
     @property
     def state_size(self):
@@ -60,7 +78,9 @@ class NTMCell(tf.nn.rnn_cell.RNNCell):
         w_g = tf.cast(w_g, tf.complex64)
         s = tf.cast(s, tf.complex64)
         w_tild = tf.real(tf.ifft(tf.fft(w_g) * tf.fft(s)))
-        w = tf.nn.softmax(gamma * tf.log(w_tild))
+        # FIXME: tf.log yields lots of NaN here!!
+        # w = tf.nn.softmax(gamma * tf.log(w_tild))
+        w = tf.nn.softmax(gamma * w_tild)
         return w
 
     def _new_w_controller(self, use_lstm, output_size):
@@ -99,7 +119,9 @@ class NTMCell(tf.nn.rnn_cell.RNNCell):
                 inputs, addition_controller_state)
             w = self._get_w(last_w, raw_output)
             memory_tild = self.memory - self.memory * outer_product(e, w)
-            write_op = self.memory.assign(memory_tild + outer_product(a, w))
+            # write_op = self.memory.assign(memory_tild + outer_product(a, w))
+            write_op = tf.assign(self.memory, memory_tild + outer_product(a, w),
+                                 name='write_op')
             return (write_op, w, write_w_controller_state,
                     erase_controller_state, addition_controller_state)
 

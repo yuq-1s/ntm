@@ -1,6 +1,7 @@
 #! /usr/bin/env python3
 
 import tensorflow as tf
+from tensorflow.python import debug as tfdbg
 import numpy as np
 import random
 from ntm import NTM
@@ -19,6 +20,7 @@ tf.app.flags.DEFINE_integer('min_seq_length', 10, 'minimum length of sequence'
                             'to copy')
 tf.app.flags.DEFINE_integer('random_seed', 42, 'random seed')
 tf.app.flags.DEFINE_integer('num_batch', 10, 'number of batches for training')
+tf.app.flags.DEFINE_float('learning_rate', 1e-3, 'learning rate')
 
 class CopyNTM(NTM):
     def __call__(self, inputs, labels, lengths, params):
@@ -86,32 +88,32 @@ def main(_):
         'M': FLAGS.M,
         'use_lstm': FLAGS.use_lstm,
         'batch_size': FLAGS.batch_size,
-        'bit_width': FLAGS.bit_width}
+        'bit_width': FLAGS.bit_width,
+        'learning_rate': FLAGS.learning_rate}
 
     # TODO: batch numbers together
-    with tf.name_scope('train'):
+    with tf.variable_scope('train'):
         data_op = tf.placeholder(shape=[None, FLAGS.max_seq_length*2, FLAGS.bit_width],
                               dtype=tf.float32, name='data')
         labels_op = tf.placeholder(shape=[None, FLAGS.max_seq_length*2, FLAGS.bit_width],
                                 dtype=tf.float32, name='labels')
         lengths_op = tf.placeholder(shape=[None], dtype=tf.int64, name='lengths')
-        # data, labels, lengths = tf.train.batch([data, labels, lengths],
                                                # FLAGS.batch_size)
     ntm = CopyNTM()
-    # train_dataset = get_dataset(FLAGS.batch_size * FLAGS.num_batch, 'train')
-    # eval_dataset = get_dataset(FLAGS.batch_size * 2, 'eval')
     train_op = ntm(data_op, labels_op, lengths_op, params)
     summary_op = tf.summary.merge_all()
     with tf.train.MonitoredTrainingSession(
         checkpoint_dir='model') as sess:
+        sess = tfdbg.TensorBoardDebugWrapperSession(sess, 'grpc://127.0.0.1:7000')
         writer = tf.summary.FileWriter('logs', sess.graph)
         global_step = tf.train.get_global_step()
-        for _ in range(FLAGS.train_steps):
+        for _ in range(FLAGS.train_steps//100):
             data, labels, lengths = get_dataset()
-            feed_dict = {data_op: data, labels_op: labels, lengths_op: lengths}
-            summary, step, _ = sess.run([summary_op, global_step, train_op],
-                                        feed_dict=feed_dict)
-            writer.add_summary(summary, step)
+            for _ in range(100):
+                feed_dict = {data_op: data, labels_op: labels, lengths_op: lengths}
+                summary, step, _ = sess.run([summary_op, global_step, train_op],
+                                            feed_dict=feed_dict)
+                writer.add_summary(summary, step)
 
 if __name__ == '__main__':
     tf.app.run()
