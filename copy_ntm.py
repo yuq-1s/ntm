@@ -34,8 +34,9 @@ class CopyNTM(NTM):
         if hasattr(self, '_loss'):
             return self._loss
         else:
-            self._loss = tf.losses.absolute_difference(
-                self.outputs, self.labels)
+            self._loss = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(
+                logits=tf.reshape(self.logits, [-1, 2]),
+                labels=tf.one_hot(tf.reshape(self.labels, [-1]), 2)))
             tf.summary.scalar('loss', self._loss)
             return self._loss
 
@@ -45,7 +46,7 @@ class CopyNTM(NTM):
             return self._metrics
         else:
             metrics = tf.metrics.mean_absolute_error(
-                labels=self.labels, predictions=self.outputs)
+                labels=self.labels, predictions=self.logits)
             self._metrics = {'mae': metrics}
             tf.summary.scalar('mae', metrics)
             return self._metrics
@@ -96,7 +97,7 @@ def main(_):
         data_op = tf.placeholder(shape=[None, FLAGS.max_seq_length*2, FLAGS.bit_width],
                               dtype=tf.float32, name='data')
         labels_op = tf.placeholder(shape=[None, FLAGS.max_seq_length*2, FLAGS.bit_width],
-                                dtype=tf.float32, name='labels')
+                                dtype=tf.uint8, name='labels')
         lengths_op = tf.placeholder(shape=[None], dtype=tf.int64, name='lengths')
                                                # FLAGS.batch_size)
     ntm = CopyNTM()

@@ -4,9 +4,6 @@ import tensorflow as tf
 
 class NTMCell(tf.nn.rnn_cell.RNNCell):
     def __init__(self, batch_size, input_dim, N, M, use_lstm=True):
-        # self.memory = tf.get_variable(
-            # "memory", shape=[batch_size, M, N], dtype=tf.float32,
-            # initializer=tf.contrib.layers.xavier_initializer())
         self.N = N
         self.M = M
         self.head_output_size = N+M+3
@@ -18,8 +15,8 @@ class NTMCell(tf.nn.rnn_cell.RNNCell):
         self.erase_controller = self._new_w_controller(use_lstm, M)
         self.addition_controller = self._new_w_controller(use_lstm, M)
         self.input_dim = int(input_dim)
-        self.encoder = tf.get_variable('encoder', shape=[input_dim, M])
-        self.decoder = tf.get_variable('decoder', shape=[M, input_dim])
+        # self.encoder = tf.get_variable('encoder', shape=[2, 1])
+        self.decoder = tf.get_variable('decoder', shape=[M, input_dim * 2])
         if use_lstm:
             self.initial_read_w_controller_state = \
                 self._get_lstm_initial_state(self.head_output_size, 'read_w')
@@ -52,7 +49,7 @@ class NTMCell(tf.nn.rnn_cell.RNNCell):
 
     @property
     def output_size(self):
-        return self.input_dim
+        return self.input_dim * 2
 
     def _get_w(self, last_w, raw_output, memory):
         with tf.variable_scope('get_w'):
@@ -126,8 +123,10 @@ class NTMCell(tf.nn.rnn_cell.RNNCell):
              last_addition_state,
              memory) = state
             # FIXME: how to encode inputs??
-            # inputs = tf.concat([inputs, last_r], axis=1)
-            inputs = tf.matmul(inputs, self.encoder) + last_r
+            inputs = tf.concat([inputs, last_r], axis=1)
+            # inputs = tf.concat(
+                # [tf.nn.embedding_lookup(self.encoder, inputs), last_r], axis=1)
+            # inputs = tf.matmul(inputs, self.encoder) + last_r
 
             # READ
             r, read_w, read_w_controller_state = self.read_head(
@@ -141,10 +140,8 @@ class NTMCell(tf.nn.rnn_cell.RNNCell):
              memory) = self.write_head(
                  inputs, last_write_w, write_w_controller_state,
                  last_erase_state, last_addition_state, memory)
-            # To make sure write_op is executed
-            # with tf.control_dependencies([write_op]):
 
-            outputs = tf.matmul(r, self.decoder)
-            return outputs, (r, read_w, write_w, read_w_controller_state,
+            logits = tf.matmul(r, self.decoder)
+            return logits, (r, read_w, write_w, read_w_controller_state,
                              write_w_controller_state, erase_controller_state,
                              addition_controller_state, memory)

@@ -42,7 +42,7 @@ class NTM(abc.ABC):
                             cell.initial_erase_controller_state,
                             cell.initial_addition_controller_state,
                             initial_memory)
-            self.outputs, self.final_state = tf.nn.dynamic_rnn(
+            self.logits, self.final_state = tf.nn.dynamic_rnn(
                 cell,
                 sequence_length=lengths,
                 inputs=inputs,
