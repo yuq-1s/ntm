@@ -32,13 +32,16 @@ class NTM(abc.ABC):
                         'read_w', shape=[batch_size, N], dtype=tf.float32))
                     initial_write_w = tf.nn.softmax(tf.get_variable(
                         'write_w', shape=[batch_size, N], dtype=tf.float32))
+                    initial_memory = tf.get_variable(
+                        'memory', shape=[batch_size, M, N], dtype=tf.float32)
                     state = (initial_r,
                             initial_read_w,
                             initial_write_w,
                             cell.initial_read_w_controller_state,
                             cell.initial_write_w_controller_state,
                             cell.initial_erase_controller_state,
-                            cell.initial_addition_controller_state)
+                            cell.initial_addition_controller_state,
+                            initial_memory)
             self.outputs, self.final_state = tf.nn.dynamic_rnn(
                 cell,
                 sequence_length=lengths,

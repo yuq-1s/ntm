@@ -104,7 +104,7 @@ def main(_):
     summary_op = tf.summary.merge_all()
     with tf.train.MonitoredTrainingSession(
         checkpoint_dir='model') as sess:
-        sess = tfdbg.TensorBoardDebugWrapperSession(sess, 'grpc://127.0.0.1:7000')
+        # sess = tfdbg.TensorBoardDebugWrapperSession(sess, 'grpc://127.0.0.1:7000')
         writer = tf.summary.FileWriter('logs', sess.graph)
         global_step = tf.train.get_global_step()
         for _ in range(FLAGS.train_steps//100):
