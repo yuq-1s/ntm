@@ -8,8 +8,8 @@ from ntm import NTM
 
 FLAGS = tf.app.flags.FLAGS
 
-tf.app.flags.DEFINE_integer('N', 10, "memory size")
-tf.app.flags.DEFINE_integer('M', 100, "memory width")
+tf.app.flags.DEFINE_integer('N', 30, "memory size")
+tf.app.flags.DEFINE_integer('M', 10, "memory width")
 tf.app.flags.DEFINE_boolean('use_lstm', True, "usr lstm or linear controller")
 tf.app.flags.DEFINE_integer('train_steps', 100, "steps to train")
 tf.app.flags.DEFINE_integer('batch_size', 32, 'batch size')
@@ -21,6 +21,7 @@ tf.app.flags.DEFINE_integer('min_seq_length', 10, 'minimum length of sequence'
 tf.app.flags.DEFINE_integer('random_seed', 42, 'random seed')
 tf.app.flags.DEFINE_integer('num_batch', 10, 'number of batches for training')
 tf.app.flags.DEFINE_float('learning_rate', 1e-3, 'learning rate')
+tf.app.flags.DEFINE_integer('num_classes', 2, 'number of classes to be copied')
 
 class CopyNTM(NTM):
     def __call__(self, inputs, labels, lengths, params):
@@ -35,8 +36,9 @@ class CopyNTM(NTM):
             return self._loss
         else:
             self._loss = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(
-                logits=tf.reshape(self.logits, [-1, 2]),
-                labels=tf.one_hot(tf.reshape(self.labels, [-1]), 2)))
+                logits=tf.reshape(self.logits, [-1, FLAGS.num_classes+1]),
+                labels=tf.one_hot(tf.reshape(self.labels, [-1]),
+                                  FLAGS.num_classes+1)))
             tf.summary.scalar('loss', self._loss)
             return self._loss
 
@@ -108,7 +110,8 @@ def main(_):
         'use_lstm': FLAGS.use_lstm,
         'batch_size': FLAGS.batch_size,
         'bit_width': FLAGS.bit_width,
-        'learning_rate': FLAGS.learning_rate}
+        'learning_rate': FLAGS.learning_rate,
+        'num_classes': FLAGS.num_classes}
 
     # TODO: batch numbers together
     with tf.variable_scope('train'):

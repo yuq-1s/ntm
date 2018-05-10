@@ -20,11 +20,13 @@ class NTM(abc.ABC):
         M = params['M']
         use_lstm = params['use_lstm']
         batch_size = params['batch_size']
+        num_classes = params['num_classes']
         # inputs: [batch_size, time_step, input_dim]
         input_size = inputs.shape[2]
         with tf.variable_scope('ntm'):
             with tf.variable_scope('ntm_cell'):
-                cell = NTMCell(batch_size, input_size, N, M, use_lstm)
+                cell = NTMCell(batch_size, input_size, N, M, use_lstm,
+                               num_classes)
                 with tf.variable_scope('states'):
                     initial_r = tf.get_variable(
                         'r', shape=[batch_size, M], dtype=tf.float32)

@@ -3,10 +3,11 @@
 import tensorflow as tf
 
 class NTMCell(tf.nn.rnn_cell.RNNCell):
-    def __init__(self, batch_size, input_dim, N, M, use_lstm=True):
+    def __init__(self, batch_size, input_dim, N, M, use_lstm=True, num_classes=2):
         self.N = N
         self.M = M
         self.head_output_size = N+M+3
+        self.num_classes = num_classes+1
         self.batch_size = batch_size
         self.read_w_controller = self._new_w_controller(use_lstm,
                                                         self.head_output_size)
@@ -16,7 +17,8 @@ class NTMCell(tf.nn.rnn_cell.RNNCell):
         self.addition_controller = self._new_w_controller(use_lstm, M)
         self.input_dim = int(input_dim)
         # self.encoder = tf.get_variable('encoder', shape=[2, 1])
-        self.decoder = tf.get_variable('decoder', shape=[M, input_dim * 2])
+        self.decoder = tf.get_variable('decoder', shape=[M, input_dim *
+                                                         self.num_classes])
         if use_lstm:
             self.initial_read_w_controller_state = \
                 self._get_lstm_initial_state(self.head_output_size, 'read_w')
@@ -49,7 +51,7 @@ class NTMCell(tf.nn.rnn_cell.RNNCell):
 
     @property
     def output_size(self):
-        return self.input_dim * 2
+        return self.input_dim * self.num_classes
 
     def _get_w(self, last_w, raw_output, memory):
         with tf.variable_scope('get_w'):
