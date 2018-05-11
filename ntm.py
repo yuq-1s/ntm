@@ -28,8 +28,10 @@ class NTM(abc.ABC):
                 cell = NTMCell(batch_size, input_size, N, M, use_lstm,
                                num_classes)
                 with tf.variable_scope('states'):
+                    # FIXME: Should these states be trainable?
                     initial_r = tf.get_variable(
-                        'r', shape=[batch_size, M], dtype=tf.float32)
+                        'r', shape=[batch_size, M], dtype=tf.float32,
+                        initializer=tf.zeros_initializer())
                     initial_read_w = tf.nn.softmax(tf.get_variable(
                         'read_w', shape=[batch_size, N], dtype=tf.float32))
                     initial_write_w = tf.nn.softmax(tf.get_variable(
@@ -54,4 +56,6 @@ class NTM(abc.ABC):
             train_op = tf.train.AdamOptimizer(
                 learning_rate=params['learning_rate']).minimize(
                     self.loss, global_step=tf.train.get_or_create_global_step())
+            # To get metrics summaries
+            self.metrics
         return train_op

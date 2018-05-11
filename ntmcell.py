@@ -143,7 +143,7 @@ class NTMCell(tf.nn.rnn_cell.RNNCell):
                  inputs, last_write_w, write_w_controller_state,
                  last_erase_state, last_addition_state, memory)
 
-            logits = tf.matmul(r, self.decoder)
+            logits = tf.matmul(r, self.decoder, name='logits')
             return logits, (r, read_w, write_w, read_w_controller_state,
                              write_w_controller_state, erase_controller_state,
                              addition_controller_state, memory)

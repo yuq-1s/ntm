@@ -23,6 +23,9 @@ tf.app.flags.DEFINE_integer('num_batch', 10, 'number of batches for training')
 tf.app.flags.DEFINE_float('learning_rate', 1e-3, 'learning rate')
 tf.app.flags.DEFINE_integer('num_classes', 2, 'number of classes to be copied')
 
+TOTAL_TIME_LENGTH = FLAGS.max_seq_length * 2 + 2
+TOTAL_BIT_WIDTH = FLAGS.bit_width + 2
+
 class CopyNTM(NTM):
     def __call__(self, inputs, labels, lengths, params):
         self.inputs = inputs
@@ -47,42 +50,41 @@ class CopyNTM(NTM):
         if hasattr(self, '_metrics'):
             return self._metrics
         else:
-            metrics = tf.metrics.mean_absolute_error(
-                labels=self.labels, predictions=self.logits)
-            self._metrics = {'mae': metrics}
-            tf.summary.scalar('mae', metrics)
+            predictions = tf.argmax(
+                tf.reshape(self.logits, [FLAGS.batch_size, -1, TOTAL_BIT_WIDTH,
+                                         FLAGS.num_classes+1]),
+                axis=3, name='predictions')
+            accuracy = tf.metrics.accuracy(
+                labels=self.labels, predictions=predictions)
+            self._metrics = {'accuracy': accuracy}
+            tf.summary.scalar('accuracy', accuracy[1])
             return self._metrics
 
 def generate_single_sequence():
     def _do_generate(seq_length):
         for _i in range(seq_length):
             for _j in range(FLAGS.bit_width):
-                yield random.randint(0, 1)
+                yield random.randint(0, FLAGS.num_classes-1)
             for _j in range(2):
                 yield 0
 
     def _pad_back(seq):
-        desired = (FLAGS.bit_width+2) * (FLAGS.max_seq_length*2 + 2)
+        desired = (TOTAL_BIT_WIDTH) * TOTAL_TIME_LENGTH
         seq_len_times_bit_width_plus2 = len(seq)
         assert seq_len_times_bit_width_plus2 <= desired
-        return seq + [-1]*(desired-seq_len_times_bit_width_plus2)
+        return seq + [NOT_A_WORD]*(desired-seq_len_times_bit_width_plus2)
 
-    ''' generate 2 continuous copy of same random bits, padded with -1 '''
+    ''' generate 2 continuous copy of same random bits, padded with NOT_A_WORD '''
     while True:
-        NOT_A_WORD = -1
+        NOT_A_WORD = FLAGS.num_classes
         seq_length = random.randint(FLAGS.min_seq_length, FLAGS.max_seq_length)
         start = [0]*FLAGS.bit_width+[0, 1]
         end = [0]*FLAGS.bit_width+[1, 0]
         sequence = list(_do_generate(seq_length))
         inputs = _pad_back(start + sequence + end)
-        labels = _pad_back([-1]*(seq_length+2)*(FLAGS.bit_width+2) + sequence)
+        labels = _pad_back([NOT_A_WORD]*(seq_length+2)*(TOTAL_BIT_WIDTH) + sequence)
         lengths = seq_length*2 + 2
-        # padding_length = (FLAGS.max_seq_length-seq_length) * FLAGS.bit_width
-        # sequence += [NOT_A_WORD] * padding_length
-        # empty_sequence = [NOT_A_WORD]*FLAGS.max_seq_length*FLAGS.bit_width
-        # inputs = sequence + empty_sequence
-        # labels = empty_sequence + sequence
-        yield inputs, labels, lengths # seq_length+FLAGS.max_seq_length
+        yield inputs, labels, lengths
 
 def get_dataset():
     # I swear I'll never use tfrecord again :(
@@ -92,8 +94,8 @@ def get_dataset():
     ret = {'data': [], 'labels': [], 'lengths': []}
     count = 1
     for data, labels, lengths in data_generator:
-        data = np.reshape(data, [FLAGS.max_seq_length*2+2, FLAGS.bit_width+2])
-        labels = np.reshape(labels, [FLAGS.max_seq_length*2+2, FLAGS.bit_width+2])
+        data = np.reshape(data, [TOTAL_TIME_LENGTH, TOTAL_BIT_WIDTH])
+        labels = np.reshape(labels, [TOTAL_TIME_LENGTH, TOTAL_BIT_WIDTH])
         ret['data'].append(data)
         ret['labels'].append(labels)
         ret['lengths'].append(lengths)
@@ -115,29 +117,30 @@ def main(_):
 
     # TODO: batch numbers together
     with tf.variable_scope('train'):
-        data_op = tf.placeholder(shape=[None, FLAGS.max_seq_length*2+2,
-                                        FLAGS.bit_width+2],
+        data_op = tf.placeholder(shape=[None, TOTAL_TIME_LENGTH,
+                                        TOTAL_BIT_WIDTH],
                               dtype=tf.float32, name='data')
-        labels_op = tf.placeholder(shape=[None, FLAGS.max_seq_length*2+2,
-                                          FLAGS.bit_width+2],
+        labels_op = tf.placeholder(shape=[None, TOTAL_TIME_LENGTH,
+                                          TOTAL_BIT_WIDTH],
                                 dtype=tf.int32, name='labels')
         lengths_op = tf.placeholder(shape=[None], dtype=tf.int64, name='lengths')
+    # get_dataset()
     ntm = CopyNTM()
     train_op = ntm(data_op, labels_op, lengths_op, params)
     summary_op = tf.summary.merge_all()
 
     with tf.train.MonitoredTrainingSession(
         checkpoint_dir='model') as sess:
-        # sess = tfdbg.TensorBoardDebugWrapperSession(sess, 'grpc://127.0.0.1:7000')
+        sess = tfdbg.TensorBoardDebugWrapperSession(sess, 'grpc://127.0.0.1:7000')
         writer = tf.summary.FileWriter('logs', sess.graph)
         global_step = tf.train.get_global_step()
-        for _ in range(FLAGS.train_steps//100):
+        for _ in range(FLAGS.train_steps):
             data, labels, lengths = get_dataset()
-            for _ in range(100):
-                feed_dict = {data_op: data, labels_op: labels, lengths_op: lengths}
-                summary, step, _ = sess.run([summary_op, global_step, train_op],
-                                            feed_dict=feed_dict)
-                writer.add_summary(summary, step)
+            # for _ in range(10):
+            feed_dict = {data_op: data, labels_op: labels, lengths_op: lengths}
+            summary, step, _ = sess.run([summary_op, global_step, train_op],
+                                        feed_dict=feed_dict)
+            writer.add_summary(summary, step)
 
 if __name__ == '__main__':
     tf.app.run()
