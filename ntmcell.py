@@ -18,7 +18,7 @@ class NTMCell(tf.nn.rnn_cell.RNNCell):
         self.input_dim = int(input_dim)
         # self.encoder = tf.get_variable('encoder', shape=[2, 1])
         self.decoder = tf.get_variable('decoder', shape=[M, input_dim *
-                                                         self.num_classes])
+                                                         num_classes])
         if use_lstm:
             self.initial_read_w_controller_state = \
                 self._get_lstm_initial_state(self.head_output_size, 'read_w')
@@ -51,7 +51,7 @@ class NTMCell(tf.nn.rnn_cell.RNNCell):
 
     @property
     def output_size(self):
-        return self.input_dim * self.num_classes
+        return self.input_dim * (self.num_classes-1)
 
     def _get_w(self, last_w, raw_output, memory):
         with tf.variable_scope('get_w'):

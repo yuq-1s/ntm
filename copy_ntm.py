@@ -38,10 +38,17 @@ class CopyNTM(NTM):
         if hasattr(self, '_loss'):
             return self._loss
         else:
-            self._loss = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(
-                logits=tf.reshape(self.logits, [-1, FLAGS.num_classes+1]),
-                labels=tf.one_hot(tf.reshape(self.labels, [-1]),
-                                  FLAGS.num_classes+1)))
+            mask = tf.not_equal(
+                self.labels, tf.ones_like(self.labels)*FLAGS.num_classes,
+                name='mask')
+            raw_loss = tf.nn.softmax_cross_entropy_with_logits_v2(
+                logits=tf.reshape(
+                    self.logits,
+                    [FLAGS.batch_size, TOTAL_TIME_LENGTH, TOTAL_BIT_WIDTH,
+                     FLAGS.num_classes]),
+                labels=tf.one_hot(self.labels, FLAGS.num_classes))
+            self._loss = tf.reduce_sum(tf.boolean_mask(raw_loss, mask)) / \
+                tf.cast(tf.count_nonzero(mask), tf.float32)
             tf.summary.scalar('loss', self._loss)
             return self._loss
 
@@ -50,12 +57,18 @@ class CopyNTM(NTM):
         if hasattr(self, '_metrics'):
             return self._metrics
         else:
+            mask = tf.not_equal(
+                self.labels, tf.ones_like(self.labels)*FLAGS.num_classes,
+                name='mask')
             predictions = tf.argmax(
-                tf.reshape(self.logits, [FLAGS.batch_size, -1, TOTAL_BIT_WIDTH,
-                                         FLAGS.num_classes+1]),
+                tf.reshape(
+                    self.logits,
+                    [FLAGS.batch_size, TOTAL_TIME_LENGTH,
+                     TOTAL_BIT_WIDTH, FLAGS.num_classes]),
                 axis=3, name='predictions')
             accuracy = tf.metrics.accuracy(
-                labels=self.labels, predictions=predictions)
+                labels=tf.boolean_mask(self.labels, mask),
+                predictions=tf.boolean_mask(predictions, mask))
             self._metrics = {'accuracy': accuracy}
             tf.summary.scalar('accuracy', accuracy[1])
             return self._metrics
@@ -131,7 +144,7 @@ def main(_):
 
     with tf.train.MonitoredTrainingSession(
         checkpoint_dir='model') as sess:
-        sess = tfdbg.TensorBoardDebugWrapperSession(sess, 'grpc://127.0.0.1:7000')
+        # sess = tfdbg.TensorBoardDebugWrapperSession(sess, 'grpc://127.0.0.1:7000')
         writer = tf.summary.FileWriter('logs', sess.graph)
         global_step = tf.train.get_global_step()
         for _ in range(FLAGS.train_steps):
