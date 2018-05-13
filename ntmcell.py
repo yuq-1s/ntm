@@ -64,11 +64,13 @@ class NTMCell(tf.nn.rnn_cell.RNNCell):
             w_c = tf.nn.softmax(logits)
             w_g = g * w_c + (1-g) * last_w
             w_g = tf.cast(w_g, tf.complex64)
-            s = tf.cast(s, tf.complex64)
+            s = tf.cast(tf.nn.softmax(s), tf.complex64)
             w_tild = tf.real(tf.ifft(tf.fft(w_g) * tf.fft(s)))
+            # w = tf.pow(w_tild, gamma)
+            # w = w / tf.reduce_sum(w)
             # FIXME: tf.log yields lots of NaN here!!
-            # w = tf.nn.softmax(gamma * tf.log(w_tild))
-            w = tf.nn.softmax(gamma * w_tild)
+            w = tf.nn.softmax(gamma * tf.log(w_tild))
+            # w = tf.nn.softmax(gamma * w_tild)
             return w
 
     def _new_w_controller(self, use_lstm, output_size):
