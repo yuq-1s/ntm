@@ -66,11 +66,12 @@ class CopyNTM(NTM):
                     [FLAGS.batch_size, TOTAL_TIME_LENGTH,
                      TOTAL_BIT_WIDTH, FLAGS.num_classes]),
                 axis=3, name='predictions')
-            accuracy = tf.metrics.accuracy(
-                labels=tf.boolean_mask(self.labels, mask),
-                predictions=tf.boolean_mask(predictions, mask))
+            accuracy = tf.count_nonzero(
+                tf.equal(tf.boolean_mask(self.labels, mask),
+                         tf.boolean_mask(predictions, mask))) / \
+                tf.count_nonzero(mask)
             self._metrics = {'accuracy': accuracy}
-            tf.summary.scalar('accuracy', accuracy[1])
+            tf.summary.scalar('accuracy', accuracy)
             return self._metrics
 
 def generate_single_sequence():
@@ -135,7 +136,7 @@ def main(_):
                               dtype=tf.float32, name='data')
         labels_op = tf.placeholder(shape=[None, TOTAL_TIME_LENGTH,
                                           TOTAL_BIT_WIDTH],
-                                dtype=tf.int32, name='labels')
+                                dtype=tf.int64, name='labels')
         lengths_op = tf.placeholder(shape=[None], dtype=tf.int64, name='lengths')
     # get_dataset()
     ntm = CopyNTM()
