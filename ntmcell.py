@@ -6,7 +6,7 @@ class NTMCell(tf.nn.rnn_cell.RNNCell):
     def __init__(self, batch_size, input_dim, N, M, use_lstm=True, num_classes=2):
         self.N = N
         self.M = M
-        self.head_output_size = N+M+3
+        self.head_output_size = 3*N+M+1
         self.num_classes = num_classes+1
         self.batch_size = batch_size
         self.read_w_controller = self._new_w_controller(
@@ -18,7 +18,6 @@ class NTMCell(tf.nn.rnn_cell.RNNCell):
         self.addition_controller = self._new_w_controller(
             use_lstm, M, scope='addition_controller')
         self.input_dim = int(input_dim)
-        # self.encoder = tf.get_variable('encoder', shape=[2, 1])
         self.decoder = tf.get_variable('decoder', shape=[M, input_dim *
                                                          num_classes])
         if use_lstm:
@@ -58,24 +57,26 @@ class NTMCell(tf.nn.rnn_cell.RNNCell):
     def _get_w(self, last_w, raw_output, memory):
         with tf.variable_scope('get_w'):
             k, beta, g, s, gamma = tf.split(raw_output,
-                                            [self.M, 1, 1, self.N, 1],
+                                            [self.M, self.N, 1, self.N, self.N],
                                             axis=1)
             memory_row_norm = tf.reduce_sum(tf.abs(memory), axis=1)
-            foo = tf.squeeze(tf.matmul(tf.expand_dims(k, 1), memory))
-            logits = beta * foo / memory_row_norm
-            w_c = tf.nn.softmax(logits)
-            g = tf.sigmoid(g)
-            w_g = g * w_c + (1-g) * last_w
+            product = tf.squeeze(tf.matmul(tf.expand_dims(k, 1), memory))
+            # omit division of `k` since it is canceled after softmax anyway
+            beta = tf.nn.softplus(beta, name='beta')
+            w_c = tf.nn.softmax(beta * product / memory_row_norm, name='w_c')
+            g = tf.sigmoid(g, name='gate_parameter')
+            w_g = tf.add(g * w_c, (1-g) * last_w, name='w_g')
             w_g = tf.cast(w_g, tf.complex64)
             # s = tf.cast(tf.nn.softmax(s), tf.complex64)
-            s = tf.cast(tf.tanh(s), tf.complex64)
-            w_tild = tf.real(tf.ifft(tf.fft(w_g) * tf.fft(s)))
-            gamma = tf.nn.softplus(gamma)+1
+            s = tf.cast(tf.tanh(s, name='shift'), tf.complex64)
+            w_tild = tf.real(tf.ifft(tf.fft(w_g) * tf.fft(s)), name='w_tild')
+            gamma = tf.add(tf.nn.softplus(gamma), 1, name='gamma')
             # w = tf.pow(w_tild, gamma)
             # w = w / tf.reduce_sum(w)
             # FIXME: tf.log yields lots of NaN here!!
             # w = tf.nn.softmax(gamma * tf.log(tf.nn.softmax(w_tild)))
-            w = tf.nn.softmax(gamma * tf.log(tf.nn.softplus(w_tild)))
+            w = tf.nn.softmax(gamma * tf.log(tf.nn.softplus(w_tild)),
+                              name='new_weight')
             # w = tf.nn.softmax(gamma * tf.log(tf.nn.sigmoid(w_tild)))
             # w = tf.nn.softmax(gamma * w_tild)
             return w
