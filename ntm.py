@@ -74,6 +74,7 @@ class lstm_machine(NTM):
         initial_state = rnn_cell.zero_state(batch_size, dtype=tf.float32)
 
         # 'state' is a tensor of shape [batch_size, cell_state_size]
+        # TODO: try tf.contrib.cudnn_rnn
         self.logits, self.final_state = tf.nn.dynamic_rnn(
             rnn_cell, inputs, initial_state=initial_state, dtype=tf.float32,
             sequence_length=lengths)
