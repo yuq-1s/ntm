@@ -67,17 +67,20 @@ def load_op(filename, total_time_length, total_bit_width, batch_size):
                     'lengths': tf.FixedLenFeature([1], tf.int64)}
             features = tf.parse_single_example(record, features=feature)
             inputs = tf.reshape(
-                features['inputs'], [total_time_length, total_bit_width])
+                features['inputs'], [total_time_length, total_bit_width],
+                name='inputs')
             labels = tf.reshape(
-                features['labels'], [total_time_length, total_bit_width])
-            lengths = tf.reshape(features['lengths'], [])
+                features['labels'], [total_time_length, total_bit_width],
+                name='labels')
+            lengths = tf.reshape(features['lengths'], [], name='lengths')
             return inputs, labels, lengths
 
-    return tf.data.TFRecordDataset(filename) \
+    return tf.data.TFRecordDataset(filename, num_parallel_reads=32) \
         .shuffle(256) \
         .repeat() \
-        .map(process_record) \
+        .map(process_record, num_parallel_calls=64) \
         .batch(batch_size) \
+        .prefetch(8) \
         .make_one_shot_iterator().get_next()
 
 if __name__ == '__main__':
