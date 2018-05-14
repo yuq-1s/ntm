@@ -36,6 +36,10 @@ class CopyNTM(ntm.NTM):
         self.inputs = inputs
         self.labels = labels
         self.lengths = lengths
+        self.mask = tf.not_equal(
+            self.labels, tf.ones_like(self.labels)*FLAGS.num_classes,
+            name='mask')
+        self.total_seq_length = tf.cast(tf.count_nonzero(self.mask), tf.float32)
         return super().model_fn(inputs, labels, lengths, params)
 
     @property
@@ -44,17 +48,18 @@ class CopyNTM(ntm.NTM):
             if hasattr(self, '_loss'):
                 return self._loss
             else:
-                mask = tf.not_equal(
-                    self.labels, tf.ones_like(self.labels)*FLAGS.num_classes,
-                    name='mask')
                 raw_loss = tf.nn.softmax_cross_entropy_with_logits_v2(
                     logits=tf.reshape(
                         self.logits,
                         [FLAGS.batch_size, TOTAL_TIME_LENGTH, TOTAL_BIT_WIDTH,
                         FLAGS.num_classes]),
-                    labels=tf.one_hot(self.labels, FLAGS.num_classes))
-                self._loss = tf.reduce_sum(tf.boolean_mask(raw_loss, mask)) / \
-                    tf.cast(tf.count_nonzero(mask), tf.float32)
+                    labels=tf.one_hot(self.labels, FLAGS.num_classes),
+                    name='raw_loss')
+                self._loss = tf.div(
+                    tf.reduce_sum(
+                        tf.boolean_mask(raw_loss, self.mask, name='masked_loss')
+                    ), self.total_seq_length, name='loss'
+                )
                 tf.summary.scalar('loss', self._loss)
                 return self._loss
 
@@ -64,19 +69,22 @@ class CopyNTM(ntm.NTM):
             if hasattr(self, '_metrics'):
                 return self._metrics
             else:
-                mask = tf.not_equal(
-                    self.labels, tf.ones_like(self.labels)*FLAGS.num_classes,
-                    name='mask')
                 predictions = tf.argmax(
                     tf.reshape(
                         self.logits,
                         [FLAGS.batch_size, TOTAL_TIME_LENGTH,
                         TOTAL_BIT_WIDTH, FLAGS.num_classes]),
                     axis=3, name='predictions')
-                accuracy = tf.count_nonzero(
-                    tf.equal(tf.boolean_mask(self.labels, mask),
-                            tf.boolean_mask(predictions, mask))) / \
-                    tf.count_nonzero(mask)
+                accuracy = tf.div(
+                    tf.cast(
+                        tf.count_nonzero(
+                            tf.boolean_mask(
+                                tf.equal(
+                                    self.labels, predictions),
+                                self.mask, name='masked_equal')
+                        ), tf.float32
+                    ), self.total_seq_length , name='accuracy'
+                )
                 self._metrics = {'accuracy': accuracy}
                 tf.summary.scalar('accuracy', accuracy)
                 return self._metrics
@@ -112,6 +120,8 @@ def main(_):
     with tf.train.MonitoredTrainingSession(
             save_summaries_steps=1,
             checkpoint_dir='model') as sess:
+        # sess = tfdbg.LocalCLIDebugWrapperSession(sess)
+        # sess = tfdbg.TensorBoardDebugWrapperSession(sess, 'grpc://127.0.0.1:7000')
         for _ in range(FLAGS.train_steps):
             sess.run(train_op)
 
