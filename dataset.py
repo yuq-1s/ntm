@@ -69,6 +69,8 @@ def load_op(filename, total_time_length, total_bit_width, batch_size):
             inputs = tf.reshape(
                 features['inputs'], [total_time_length, total_bit_width],
                 name='inputs')
+            # Manually crafted embedding
+            inputs = inputs * 2 - 1
             labels = tf.reshape(
                 features['labels'], [total_time_length, total_bit_width],
                 name='labels')

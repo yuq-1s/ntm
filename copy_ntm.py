@@ -90,6 +90,8 @@ class CopyNTM(ntm.NTM):
                 return self._metrics
 
 def main(_):
+    if FLAGS.num_classes != 2:
+        raise NotImplementedError('num_classes must be 2 now')
     tf.logging.set_verbosity('DEBUG')
     params={
         'N': FLAGS.N,
@@ -119,6 +121,7 @@ def main(_):
     # FIXME: write summary per step only for debug purpose
     with tf.train.MonitoredTrainingSession(
             save_summaries_steps=1,
+            save_checkpoint_secs=60,
             checkpoint_dir='model') as sess:
         # sess = tfdbg.LocalCLIDebugWrapperSession(sess)
         # sess = tfdbg.TensorBoardDebugWrapperSession(sess, 'grpc://127.0.0.1:7000')
