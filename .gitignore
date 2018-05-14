@@ -105,3 +105,4 @@ venv.bak/
 
 # dataset
 data/
+*_checkpoint.zip

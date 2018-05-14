@@ -12,7 +12,7 @@ tf.app.flags.DEFINE_integer('N', 30, "memory size")
 tf.app.flags.DEFINE_integer('M', 10, "memory width")
 tf.app.flags.DEFINE_boolean('use_lstm', True, "usr lstm or linear controller")
 tf.app.flags.DEFINE_integer('train_steps', 100, "steps to train")
-tf.app.flags.DEFINE_integer('batch_size', 32, 'batch size')
+tf.app.flags.DEFINE_integer('batch_size', 128, 'batch size')
 tf.app.flags.DEFINE_integer('bit_width', 8, 'bits to copy per time step')
 tf.app.flags.DEFINE_integer('max_seq_length', 20, 'maximum length of sequence'
                             'to copy')
@@ -20,8 +20,9 @@ tf.app.flags.DEFINE_integer('min_seq_length', 10, 'minimum length of sequence'
                             'to copy')
 tf.app.flags.DEFINE_integer('random_seed', 42, 'random seed')
 tf.app.flags.DEFINE_integer('num_batch', 10, 'number of batches for training')
-tf.app.flags.DEFINE_float('learning_rate', 1e-3, 'learning rate')
+tf.app.flags.DEFINE_float('learning_rate', 1e-2, 'learning rate')
 tf.app.flags.DEFINE_integer('num_classes', 2, 'number of classes to be copied')
+tf.app.flags.DEFINE_integer('steps_per_batch', 8, 'steps to run for each batch')
 
 TOTAL_TIME_LENGTH = FLAGS.max_seq_length * 2 + 2
 TOTAL_BIT_WIDTH = FLAGS.bit_width + 2
@@ -144,17 +145,18 @@ def main(_):
     summary_op = tf.summary.merge_all()
 
     with tf.train.MonitoredTrainingSession(
-        checkpoint_dir='model') as sess:
+            save_summaries_steps=1,
+            checkpoint_dir='model') as sess:
         # sess = tfdbg.TensorBoardDebugWrapperSession(sess, 'grpc://127.0.0.1:7000')
         writer = tf.summary.FileWriter('logs', sess.graph)
         global_step = tf.train.get_global_step()
-        for _ in range(FLAGS.train_steps):
+        for _ in range(FLAGS.train_steps // FLAGS.steps_per_batch):
             data, labels, lengths = get_dataset()
-            # for _ in range(10):
-            feed_dict = {data_op: data, labels_op: labels, lengths_op: lengths}
-            summary, step, _ = sess.run([summary_op, global_step, train_op],
-                                        feed_dict=feed_dict)
-            writer.add_summary(summary, step)
+            for _ in range(FLAGS.steps_per_batch):
+                feed_dict = {data_op: data, labels_op: labels, lengths_op: lengths}
+                summary, step, _ = sess.run([summary_op, global_step, train_op],
+                                            feed_dict=feed_dict)
+                writer.add_summary(summary, step)
 
 if __name__ == '__main__':
     tf.app.run()

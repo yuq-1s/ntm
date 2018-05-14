@@ -9,12 +9,14 @@ class NTMCell(tf.nn.rnn_cell.RNNCell):
         self.head_output_size = N+M+3
         self.num_classes = num_classes+1
         self.batch_size = batch_size
-        self.read_w_controller = self._new_w_controller(use_lstm,
-                                                        self.head_output_size)
-        self.write_w_controller = self._new_w_controller(use_lstm,
-                                                         self.head_output_size)
-        self.erase_controller = self._new_w_controller(use_lstm, M)
-        self.addition_controller = self._new_w_controller(use_lstm, M)
+        self.read_w_controller = self._new_w_controller(
+            use_lstm, self.head_output_size, scope='read_w_controller')
+        self.write_w_controller = self._new_w_controller(
+            use_lstm, self.head_output_size, scope='write_w_controller')
+        self.erase_controller = self._new_w_controller(
+            use_lstm, M, scope='erase_controller')
+        self.addition_controller = self._new_w_controller(
+            use_lstm, M, scope='addition_controller')
         self.input_dim = int(input_dim)
         # self.encoder = tf.get_variable('encoder', shape=[2, 1])
         self.decoder = tf.get_variable('decoder', shape=[M, input_dim *
@@ -62,25 +64,31 @@ class NTMCell(tf.nn.rnn_cell.RNNCell):
             foo = tf.squeeze(tf.matmul(tf.expand_dims(k, 1), memory))
             logits = beta * foo / memory_row_norm
             w_c = tf.nn.softmax(logits)
+            g = tf.sigmoid(g)
             w_g = g * w_c + (1-g) * last_w
             w_g = tf.cast(w_g, tf.complex64)
-            s = tf.cast(tf.nn.softmax(s), tf.complex64)
+            # s = tf.cast(tf.nn.softmax(s), tf.complex64)
+            s = tf.cast(tf.tanh(s), tf.complex64)
             w_tild = tf.real(tf.ifft(tf.fft(w_g) * tf.fft(s)))
+            gamma = tf.nn.softplus(gamma)+1
             # w = tf.pow(w_tild, gamma)
             # w = w / tf.reduce_sum(w)
             # FIXME: tf.log yields lots of NaN here!!
-            w = tf.nn.softmax(gamma * tf.log(w_tild))
+            # w = tf.nn.softmax(gamma * tf.log(tf.nn.softmax(w_tild)))
+            w = tf.nn.softmax(gamma * tf.log(tf.nn.softplus(w_tild)))
+            # w = tf.nn.softmax(gamma * tf.log(tf.nn.sigmoid(w_tild)))
             # w = tf.nn.softmax(gamma * w_tild)
             return w
 
-    def _new_w_controller(self, use_lstm, output_size):
-        if use_lstm:
-            return tf.contrib.rnn.BasicLSTMCell(output_size)
-        else:
-            def linear_controller(inputs, dummy_state):
-                output = tf.layers.dense(inputs, output_size)
-                return output, dummy_state
-            return linear_controller
+    def _new_w_controller(self, use_lstm, output_size, scope):
+        with tf.variable_scope(scope):
+            if use_lstm:
+                return tf.contrib.rnn.BasicLSTMCell(output_size)
+            else:
+                def linear_controller(inputs, dummy_state):
+                    output = tf.layers.dense(inputs, output_size)
+                    return output, dummy_state
+                return linear_controller
 
     def read_head(self, inputs, last_w, controller_state, memory):
         # inputs: of shape [-1, M+self.input_dim] is the concatenation of inputs
@@ -95,8 +103,9 @@ class NTMCell(tf.nn.rnn_cell.RNNCell):
     def write_head(self, inputs, last_w, write_w_controller_state,
                    erase_controller_state, addition_controller_state, memory):
         def outer_product(a, b):
-            return tf.reshape(a, [self.batch_size, -1, 1]) * \
-                tf.reshape(b, [self.batch_size, 1, -1])
+            return tf.multiply(tf.reshape(a, [self.batch_size, -1, 1]),
+                                tf.reshape(b, [self.batch_size, 1, -1]),
+                                name='outer_product')
 
         with tf.variable_scope("write_head"):
             raw_output, write_w_controller_state = self.write_w_controller(

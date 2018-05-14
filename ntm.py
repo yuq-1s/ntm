@@ -59,3 +59,21 @@ class NTM(abc.ABC):
             # To get metrics summaries
             self.metrics
         return train_op
+
+class lstm_machine(NTM):
+    def model_fn(self, inputs, labels, lengths, params):
+        N = params['N']
+        M = params['M']
+        batch_size = params['batch_size']
+        num_classes = params['num_classes']
+
+        # create a BasicRNNCell
+        cell = tf.nn.rnn_cell.BasicLSTMCell(inputs.shape[2])
+
+        # defining initial state
+        initial_state = rnn_cell.zero_state(batch_size, dtype=tf.float32)
+
+        # 'state' is a tensor of shape [batch_size, cell_state_size]
+        self.logits, self.final_state = tf.nn.dynamic_rnn(
+            rnn_cell, inputs, initial_state=initial_state, dtype=tf.float32,
+            sequence_length=lengths)
