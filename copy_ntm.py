@@ -4,7 +4,9 @@ import tensorflow as tf
 from tensorflow.python import debug as tfdbg
 import numpy as np
 import random
-from ntm import NTM
+import pathlib
+
+import ntm
 import dataset
 
 FLAGS = tf.app.flags.FLAGS
@@ -20,7 +22,7 @@ tf.app.flags.DEFINE_integer('max_seq_length', 20, 'maximum length of sequence'
 tf.app.flags.DEFINE_integer('min_seq_length', 10, 'minimum length of sequence'
                             'to copy')
 tf.app.flags.DEFINE_integer('random_seed', 42, 'random seed')
-tf.app.flags.DEFINE_integer('num_batch', 10, 'number of batches for training')
+tf.app.flags.DEFINE_integer('num_batch', 100, 'number of batches for training')
 tf.app.flags.DEFINE_float('learning_rate', 1e-2, 'learning rate')
 tf.app.flags.DEFINE_integer('num_classes', 2, 'number of classes to be copied')
 tf.app.flags.DEFINE_integer('steps_per_batch', 8, 'steps to run for each batch')
@@ -29,7 +31,7 @@ tf.app.flags.DEFINE_string('dataset', 'data/train.tfrecord', 'path to tfrecord')
 TOTAL_TIME_LENGTH = FLAGS.max_seq_length * 2 + 2
 TOTAL_BIT_WIDTH = FLAGS.bit_width + 2
 
-class CopyNTM(NTM):
+class CopyNTM(ntm.NTM):
     def __call__(self, inputs, labels, lengths, params):
         self.inputs = inputs
         self.labels = labels
@@ -91,6 +93,17 @@ def main(_):
         'num_classes': FLAGS.num_classes}
 
     ntm = CopyNTM()
+    if not pathlib.Path(FLAGS.dataset).is_file():
+        tf.logging.info('Generating %d sequences to %s' % \
+                        (FLAGS.batch_size * FLAGS.num_batch, FLAGS.dataset))
+        generator = dataset.generate_single_example(
+            FLAGS.bit_width,
+            FLAGS.min_seq_length,
+            FLAGS.max_seq_length,
+            FLAGS.num_classes)
+        dataset.write_to_file(
+            FLAGS.dataset, generator, FLAGS.batch_size*FLAGS.num_batch)
+        tf.logging.info('Sequence generation finished')
     data = dataset.load_op(
         FLAGS.dataset, TOTAL_TIME_LENGTH, TOTAL_BIT_WIDTH, FLAGS.batch_size)
     train_op = ntm(*data, params)

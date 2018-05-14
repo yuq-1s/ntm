@@ -1,6 +1,7 @@
 import numpy as np
 import tensorflow as tf
 import random
+import pathlib
 import itertools
 
 def generate_single_example(
@@ -53,6 +54,7 @@ def generate_single_example(
         yield tf.train.Example(features=features)
 
 def write_to_file(filename, generator, dataset_size):
+    pathlib.Path(filename).parents[0].mkdir(parents=True, exist_ok=True)
     with tf.python_io.TFRecordWriter(filename) as writer:
         for example in itertools.islice(generator, dataset_size):
             writer.write(example.SerializeToString())
