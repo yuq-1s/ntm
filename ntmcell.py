@@ -59,11 +59,14 @@ class NTMCell(tf.nn.rnn_cell.RNNCell):
             k, beta, g, s, gamma = tf.split(raw_output,
                                             [self.M, self.N, 1, self.N, self.N],
                                             axis=1)
-            memory_row_norm = tf.reduce_sum(tf.abs(memory), axis=1)
+            # memory_row_norm = tf.reduce_sum(tf.abs(memory), axis=1)
+            memory = tf.nn.l2_normalize(memory, axis=1)
+            k = tf.nn.l2_normalize(k, axis=1)
             product = tf.squeeze(tf.matmul(tf.expand_dims(k, 1), memory))
             # omit division of `k` since it is canceled after softmax anyway
             beta = tf.nn.softplus(beta, name='beta')
-            w_c = tf.nn.softmax(beta * product / memory_row_norm, name='w_c')
+            # w_c = tf.nn.softmax(beta * product / memory_row_norm, name='w_c')
+            w_c = tf.nn.softmax(beta * product, name='w_c')
             g = tf.sigmoid(g, name='gate_parameter')
             w_g = tf.add(g * w_c, (1-g) * last_w, name='w_g')
             w_g = tf.cast(w_g, tf.complex64)
