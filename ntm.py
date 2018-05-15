@@ -31,13 +31,20 @@ class NTM(abc.ABC):
                     # FIXME: Should these states be trainable?
                     initial_r = tf.get_variable(
                         'r', shape=[batch_size, M], dtype=tf.float32,
-                        initializer=tf.zeros_initializer())
+                        initializer=tf.zeros_initializer(),
+                        trainable=False)
                     initial_read_w = tf.nn.softmax(tf.get_variable(
-                        'read_w', shape=[batch_size, N], dtype=tf.float32))
+                        'read_w', shape=[batch_size, N], dtype=tf.float32,
+                        trainable=False,
+                        initializer=tf.zeros_initializer()))
                     initial_write_w = tf.nn.softmax(tf.get_variable(
-                        'write_w', shape=[batch_size, N], dtype=tf.float32))
+                        'write_w', shape=[batch_size, N], dtype=tf.float32,
+                        trainable=False,
+                        initializer=tf.zeros_initializer()))
                     initial_memory = tf.get_variable(
-                        'memory', shape=[batch_size, M, N], dtype=tf.float32)
+                        'memory', shape=[batch_size, M, N], dtype=tf.float32,
+                        trainable=False,
+                        initializer=tf.zeros_initializer())
                     state = (initial_r,
                             initial_read_w,
                             initial_write_w,
